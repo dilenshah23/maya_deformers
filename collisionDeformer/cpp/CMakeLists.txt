@@ -1,45 +1,31 @@
-# Define project
-cmake_minimum_required(VERSION 3.3)
-project(iDeform VERSION 2.0.0)
+cmake_minimum_required(VERSION 3.0)
 
-# Set project version macro
-add_definitions(-DPROJECT_VERSION="${PROJECT_VERSION}")
+# Project name
+project(collisionDeformer)
 
-# Set default Maya version
-if(NOT DEFINED MAYA_VERSION)
-    set(MAYA_VERSION 2018)
-endif()
-
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-find_package(Maya REQUIRED)
-
-# Set compile flags
+# Set C++11 standard
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(WIN32)
-    add_compile_options(/wd4068 /EHsc)
-endif()
+# Set Maya path
+set(MAYA_PATH "/usr/autodesk/maya2022")
 
-# Create target
-add_library(iDeform SHARED
-    source/iCollide.h
-    source/iCollide.cpp
-    source/iDisplace.h
-    source/iDisplace.cpp
-    source/iSkinDeform.h
-    source/iSkinDeform.cpp
-    source/pluginMain.cpp)
+# Add include directories
+include_directories(${MAYA_PATH}/include)
 
-include_directories(${MAYA_INCLUDE_DIR})
-link_directories(${MAYA_LIBRARY_DIR})
+# Add library directories
+link_directories(${MAYA_PATH}/lib)
 
-target_link_libraries(iDeform ${MAYA_LIBRARIES})
-set_target_properties(iDeform PROPERTIES
-    COMPILE_DEFINITIONS "${MAYA_COMPILE_DEFINITIONS}"
-    PREFIX ""
-    SUFFIX ${MAYA_PLUGIN_EXT})
+# Add source files
+set(SOURCES CollisionDeformer.cpp)
 
-if(WIN32)
-    set_target_properties(iDeform PROPERTIES LINK_FLAGS "/export:initializePlugin /export:uninitializePlugin")
-endif()
+# Create shared library
+add_library(${PROJECT_NAME} SHARED ${SOURCES})
+
+# Link Maya libraries
+target_link_libraries(${PROJECT_NAME} OpenMaya Foundation)
+
+# Set output directory
+set_target_properties(${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Set output name
+set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
