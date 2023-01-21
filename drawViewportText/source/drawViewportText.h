@@ -1,26 +1,22 @@
-#ifndef __COLLISIONDEFORMER_H__
-#define __COLLISIONDEFORMER_H__
+#ifndef __TEXT_LOCATOR_H__
+#define __TEXT_LOCATOR_H__
 
-#include <maya/MPxDeformerNode.h>
-#include <maya/MDataBlock.h>
-#include <maya/MItGeometry.h>
-#include <maya/MTypeId.h>
-#include <maya/MFnNumericAttribute.h>
+#include <maya/MPxLocatorNode.h>
+#include <maya/MString.h>
+#include <maya/M3dView.h>
+#include <maya/MDrawContext.h>
+#include <maya/MGlobal.h>
 
-class CollisionDeformer : public MPxDeformerNode
+class TextLocator : public MPxLocatorNode
 {
 public:
-    CollisionDeformer();
-    virtual ~CollisionDeformer();
-
+    TextLocator();
+    virtual ~TextLocator();
+    virtual void draw(M3dView& view, const MDagPath& path, M3dView::DisplayStyle style, M3dView::DisplayStatus status);
     static void* creator();
     static MStatus initialize();
-    virtual MStatus deform(MDataBlock& data, MItGeometry& itGeo, const MMatrix& localToWorldMatrix, unsigned int geomIndex);
-
     static MTypeId id;
-    static MObject aCollisionNode;
-    static MObject aBounce;
-    static MObject aFriction;
+    static MObject aText;
 };
 
-#endif // __COLLISIONDEFORMER_H__
+#endif // __TEXT_LOCATOR_H__
