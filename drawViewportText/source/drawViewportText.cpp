@@ -1,70 +1,81 @@
-#include <maya/MFnNumericAttribute.h>
-#include <maya/MFnMesh.h>
-#include <maya/MItGeometry.h>
-#include <maya/MPxDeformerNode.h>
+#include <maya/MPxLocatorNode.h>
+#include <maya/MString.h>
+#include <maya/M3dView.h>
+#include <maya/MDrawContext.h>
+#include <maya/MGlobal.h>
 
-class CollisionDeformer : public MPxDeformerNode
+class TextLocator : public MPxLocatorNode
 {
 public:
-    CollisionDeformer();
-    virtual ~CollisionDeformer();
+    TextLocator();
+    virtual ~TextLocator();
+
+    virtual void draw(M3dView& view, const MDagPath& path, M3dView::DisplayStyle style, M3dView::DisplayStatus status);
 
     static void* creator();
     static MStatus initialize();
 
-    virtual MStatus deform(MDataBlock& data, MItGeometry& itGeo, const MMatrix& localToWorldMatrix, unsigned int geomIndex);
-
     static MTypeId id;
-    static MObject aBounciness;
-    static MObject aFriction;
+    static MObject aText;
 };
 
-MTypeId CollisionDeformer::id(0x100000);
-MObject CollisionDeformer::aBounciness;
-MObject CollisionDeformer::aFriction;
-
-CollisionDeformer::CollisionDeformer() {}
-CollisionDeformer::~CollisionDeformer() {}
-
-void* CollisionDeformer::creator()
+void TextLocator::draw(M3dView& view, const MDagPath& path, M3dView::DisplayStyle style, M3dView::DisplayStatus status)
 {
-    return new CollisionDeformer();
+    MObject thisNode = thisMObject();
+    MString text;
+    MGlobal::executeCommand("getAttr " + MString(thisNode.partialPathName()) + ".text", text);
+
+    if (status == M3dView::kActive || status == M3dView::kLead)
+    {
+        view.beginGL();
+        glPushAttrib(GL_CURRENT_BIT);
+
+        // Get the camera's position and view direction
+        MPoint cameraPos;
+        MVector cameraDirection;
+        view.getCamera(cameraPos, cameraDirection);
+        cameraDirection = -cameraDirection;
+
+        // Get the position of the locator
+        MPoint locatorPos = path.inclusiveMatrix() * MPoint::origin;
+
+        // Calculate the text's position
+        MPoint textPos = locatorPos + (cameraDirection * 0.1);
+
+        // Draw text
+        glColor3f(1.0, 0.0, 0.0);
+        view.drawText(text, textPos, M3dView::kLeft);
+
+        glPopAttrib();
+        view.endGL();
+    }
+    else
+    {
+        // Draw locator shape
+        MPxLocatorNode::draw(view, path, style, status);
+    }
 }
 
-MStatus CollisionDeformer::initialize()
+MStatus TextLocator::initialize()
 {
     MFnNumericAttribute nAttr;
-    aBounciness = nAttr.create("bounciness", "b", MFnNumericData::kFloat, 1.0);
-    nAttr.setKeyable(true);
-    addAttribute(aBounciness);
-    attributeAffects(aBounciness, outputGeom);
-
-    aFriction = nAttr.create("friction", "f", MFnNumericData::kFloat, 0.5);
-    nAttr.setKeyable(true);
-    addAttribute(aFriction);
-    attributeAffects(aFriction, outputGeom);
+    aText = nAttr.create("text", "txt", MFnNumericData::kString);
+    nAttr.setStorable(true);
+    addAttribute(aText);
+    attributeAffects(aText, outputGeom);
 
     return MS::kSuccess;
 }
 
-MStatus CollisionDeformer::deform(MDataBlock& data, MItGeometry& itGeo, const MMatrix& localToWorldMatrix, unsigned int geomIndex)
+void* TextLocator::creator()
 {
-    MStatus status;
+    return new TextLocator();
+}
 
-    float bounciness = data.inputValue(aBounciness).asFloat();
-    float friction = data.inputValue(aFriction).asFloat();
-
-    MFnMesh fnMesh(inputGeom, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-
-    for (; !itGeo.isDone(); itGeo.next()) {
-        MPoint point = it
-        // perform collision calculations here
-        // use bounciness and friction attributes to control the behavior
-        // of the collision
-
-        fnMesh.setPoint(itGeo.index(), point, MSpace::kObject);
-    }
+MStatus initializePlugin(MObject obj)
+{
+    MFnPlugin plugin(obj, "MyPlugin", "1.0", "Any");
+    plugin.registerNode("textLocator", TextLocator::id, TextLocator::creator, TextLocator::initialize);
 
     return MS::kSuccess;
 }
