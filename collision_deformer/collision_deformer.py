@@ -52,7 +52,7 @@ def nodeInitializer():
     nAttr.setKeyable(True)
     CollisionDeformer.addAttribute(CollisionDeformer.aFriction)
     CollisionDeformer.attributeAffects(CollisionDeformer.aFriction, ommpx.cvar.MPxDeformerNode_outputGeom)
-    
+
 def initializePlugin(mobject):
     mplugin = om.MFnPlugin(mobject)
     try:
