@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 
 # Project name
-project(collisionDeformer)
+project(textLocator)
 
 # Set C++11 standard
 set(CMAKE_CXX_STANDARD 11)
@@ -16,7 +16,7 @@ include_directories(${MAYA_PATH}/include)
 link_directories(${MAYA_PATH}/lib)
 
 # Add source files
-set(SOURCES CollisionDeformer.cpp)
+set(SOURCES TextLocator.cpp)
 
 # Create shared library
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
