@@ -1,26 +1,24 @@
-#ifndef __COLLISIONDEFORMER_H__
-#define __COLLISIONDEFORMER_H__
-
-#include <maya/MPxDeformerNode.h>
-#include <maya/MDataBlock.h>
-#include <maya/MItGeometry.h>
-#include <maya/MTypeId.h>
+#include <maya/MPxNode.h>
 #include <maya/MFnNumericAttribute.h>
+#include <maya/MFnUnitAttribute.h>
+#include <maya/MTypeId.h>
+#include <maya/MPlug.h>
+#include <maya/MDataBlock.h>
+#include <maya/MEulerRotation.h>
 
-class CollisionDeformer : public MPxDeformerNode
+class AutoRoll : public MPxNode
 {
 public:
-    CollisionDeformer();
-    virtual ~CollisionDeformer();
+    AutoRoll();
+    virtual ~AutoRoll();
 
-    static void* creator();
+    virtual MStatus compute(const MPlug &plug, MDataBlock &data);
+    static void * creator();
     static MStatus initialize();
-    virtual MStatus deform(MDataBlock& data, MItGeometry& itGeo, const MMatrix& localToWorldMatrix, unsigned int geomIndex);
 
     static MTypeId id;
-    static MObject aCollisionNode;
-    static MObject aBounce;
-    static MObject aFriction;
-};
 
-#endif // __COLLISIONDEFORMER_H__
+    static MObject inputTranslate;
+    static MObject inputRotate;
+    static MObject outputRotate;
+};
