@@ -1,70 +1,101 @@
+#include <maya/MPxNode.h>
 #include <maya/MFnNumericAttribute.h>
-#include <maya/MFnMesh.h>
-#include <maya/MItGeometry.h>
-#include <maya/MPxDeformerNode.h>
+#include <maya/MFnUnitAttribute.h>
+#include <maya/MVector.h>
+#include <maya/MMatrix.h>
+#include <maya/MEulerRotation.h>
+#include <maya/MQuaternion.h>
+#include <maya/MFnDependencyNode.h>
 
-class CollisionDeformer : public MPxDeformerNode
+class AutoRollNode : public MPxNode
 {
 public:
-    CollisionDeformer();
-    virtual ~CollisionDeformer();
-
+    AutoRollNode();
+    virtual ~AutoRollNode();
     static void* creator();
     static MStatus initialize();
+    virtual MStatus compute(const MPlug& plug, MDataBlock& data);
 
-    virtual MStatus deform(MDataBlock& data, MItGeometry& itGeo, const MMatrix& localToWorldMatrix, unsigned int geomIndex);
-
-    static MTypeId id;
-    static MObject aBounciness;
-    static MObject aFriction;
+private:
+    static MObject m_inputMatrix;
+    static MObject m_forwardVector;
+    static MObject m_outputRotation;
 };
 
-MTypeId CollisionDeformer::id(0x100000);
-MObject CollisionDeformer::aBounciness;
-MObject CollisionDeformer::aFriction;
+MTypeId AutoRollNode::id(0x0011AEF0);
+MObject AutoRollNode::m_inputMatrix;
+MObject AutoRollNode::m_forwardVector;
+MObject AutoRollNode::m_outputRotation;
 
-CollisionDeformer::CollisionDeformer() {}
-CollisionDeformer::~CollisionDeformer() {}
+AutoRollNode::AutoRollNode() {}
+AutoRollNode::~AutoRollNode() {}
 
-void* CollisionDeformer::creator()
+void* AutoRollNode::creator()
 {
-    return new CollisionDeformer();
+    return new AutoRollNode();
 }
 
-MStatus CollisionDeformer::initialize()
-{
-    MFnNumericAttribute nAttr;
-    aBounciness = nAttr.create("bounciness", "b", MFnNumericData::kFloat, 1.0);
-    nAttr.setKeyable(true);
-    addAttribute(aBounciness);
-    attributeAffects(aBounciness, outputGeom);
-
-    aFriction = nAttr.create("friction", "f", MFnNumericData::kFloat, 0.5);
-    nAttr.setKeyable(true);
-    addAttribute(aFriction);
-    attributeAffects(aFriction, outputGeom);
-
-    return MS::kSuccess;
-}
-
-MStatus CollisionDeformer::deform(MDataBlock& data, MItGeometry& itGeo, const MMatrix& localToWorldMatrix, unsigned int geomIndex)
+MStatus AutoRollNode::initialize()
 {
     MStatus status;
+    MFnMatrixAttribute mAttr;
+    MFnNumericAttribute nAttr;
+    MFnUnitAttribute uAttr;
 
-    float bounciness = data.inputValue(aBounciness).asFloat();
-    float friction = data.inputValue(aFriction).asFloat();
+    m_inputMatrix = mAttr.create("inputMatrix", "im", MFnMatrixAttribute::Type, &status);
+    mAttr.setStorable(true);
+    addAttribute(m_inputMatrix);
 
-    MFnMesh fnMesh(inputGeom, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
+    m_forwardVector = nAttr.createPoint("forwardVector", "fv", &status);
+    nAttr.setStorable(true);
+    addAttribute(m_forwardVector);
 
-    for (; !itGeo.isDone(); itGeo.next()) {
-        MPoint point = it
-        // perform collision calculations here
-        // use bounciness and friction attributes to control the behavior
-        // of the collision
+    m_outputRotation = uAttr.create("outputRotation", "or", MFnUnitAttribute::kAngle, 0.0, &status);
+    uAttr.setStorable(false);
+    uAttr.setWritable(false);
+    addAttribute(m_outputRotation);
 
-        fnMesh.setPoint(itGeo.index(), point, MSpace::kObject);
-    }
+    attributeAffects(m_inputMatrix, m_outputRotation);
+    attributeAffects(m_forwardVector, m_outputRotation);
 
     return MS::kSuccess;
+}
+
+MStatus AutoRollNode::compute(const MPlug& plug, MDataBlock& data)
+{
+    MStatus status;
+    if (plug != m_outputRotation)
+    {
+        return MS::kUnknownParameter;
+    }
+
+    MMatrix inputMatrix = data.inputValue(m_inputMatrix).asMatrix();
+    MVector forwardVector = data.inputValue(m_forwardVector).asVector;
+    
+    MVector forwardProjection = forwardVector * inputMatrix;
+    forwardProjection.normalize();
+    
+    MVector upVector = MVector::up;
+    MVector upProjection = upVector * inputMatrix;
+    upProjection.normalize();
+
+    MVector rightVector = forwardProjection ^ upProjection;
+    rightVector.normalize();
+
+    MVector upRoll = upVector * (rightVector * upVector);
+    upRoll.normalize();
+
+    MQuaternion targetRotation = MQuaternion(upVector, upRoll);
+
+    MDataHandle outputRotationHandle = data.outputValue(m_outputRotation);
+    outputRotationHandle.set(targetRotation.asEulerRotation());
+    outputRotationHandle.setClean();
+
+    return MS::kSuccess;
+}
+
+
+void* AutoRollNode::creator()
+{
+return new AutoRollNode();
 }
