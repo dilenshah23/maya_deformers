@@ -97,5 +97,5 @@ MStatus AutoRollNode::compute(const MPlug& plug, MDataBlock& data)
 
 void* AutoRollNode::creator()
 {
-return new AutoRollNode();
+    return new AutoRollNode();
 }
