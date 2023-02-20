@@ -1,34 +1,37 @@
 #include <maya/MPxNode.h>
-#include <maya/MFnNumericAttribute.h>
+#include <maya/MTypeId.h>
 #include <maya/MFnUnitAttribute.h>
+#include <maya/MFnNumericAttribute.h>
+#include <maya/MFnTypedAttribute.h>
+#include <maya/MDataBlock.h>
+#include <maya/MDataHandle.h>
+#include <maya/MPoint.h>
 #include <maya/MVector.h>
 #include <maya/MMatrix.h>
-#include <maya/MEulerRotation.h>
-#include <maya/MQuaternion.h>
-#include <maya/MFnDependencyNode.h>
+#include <maya/MGlobal.h>
 
 class AutoRollNode : public MPxNode
 {
 public:
-    AutoRollNode();
-    virtual ~AutoRollNode();
     static void* creator();
     static MStatus initialize();
+
     virtual MStatus compute(const MPlug& plug, MDataBlock& data);
 
-private:
-    static MObject m_inputMatrix;
-    static MObject m_forwardVector;
-    static MObject m_outputRotation;
+    static MObject aDistance;
+    static MObject aDirection;
+    static MObject aInputMatrix;
+    static MObject aOutputMatrix;
+
+    static MTypeId id;
 };
 
-MTypeId AutoRollNode::id(0x0011AEF0);
-MObject AutoRollNode::m_inputMatrix;
-MObject AutoRollNode::m_forwardVector;
-MObject AutoRollNode::m_outputRotation;
+MObject AutoRollNode::aDistance;
+MObject AutoRollNode::aDirection;
+MObject AutoRollNode::aInputMatrix;
+MObject AutoRollNode::aOutputMatrix;
 
-AutoRollNode::AutoRollNode() {}
-AutoRollNode::~AutoRollNode() {}
+MTypeId AutoRollNode::id(0x00000001);
 
 void* AutoRollNode::creator()
 {
@@ -37,65 +40,85 @@ void* AutoRollNode::creator()
 
 MStatus AutoRollNode::initialize()
 {
-    MStatus status;
-    MFnMatrixAttribute mAttr;
-    MFnNumericAttribute nAttr;
     MFnUnitAttribute uAttr;
+    MFnNumericAttribute nAttr;
+    MFnTypedAttribute tAttr;
 
-    m_inputMatrix = mAttr.create("inputMatrix", "im", MFnMatrixAttribute::Type, &status);
-    mAttr.setStorable(true);
-    addAttribute(m_inputMatrix);
+    aDistance = uAttr.create("distance", "d", MFnUnitAttribute::kDistance);
+    uAttr.setKeyable(true);
+    uAttr.setStorable(true);
+    uAttr.setWritable(true);
+    uAttr.setReadable(true);
+    uAttr.setDefault(0.0);
 
-    m_forwardVector = nAttr.createPoint("forwardVector", "fv", &status);
+    aDirection = nAttr.createPoint("direction", "dir");
+    nAttr.setKeyable(true);
     nAttr.setStorable(true);
-    addAttribute(m_forwardVector);
+    nAttr.setWritable(true);
+    nAttr.setReadable(true);
+    nAttr.setDefault(1.0, 0.0, 0.0);
 
-    m_outputRotation = uAttr.create("outputRotation", "or", MFnUnitAttribute::kAngle, 0.0, &status);
-    uAttr.setStorable(false);
-    uAttr.setWritable(false);
-    addAttribute(m_outputRotation);
+    aInputMatrix = tAttr.create("inputMatrix", "imat", MFnData::kMatrix);
+    tAttr.setStorable(false);
+    tAttr.setKeyable(false);
+    tAttr.setReadable(true);
 
-    attributeAffects(m_inputMatrix, m_outputRotation);
-    attributeAffects(m_forwardVector, m_outputRotation);
+    aOutputMatrix = tAttr.create("outputMatrix", "omat", MFnData::kMatrix);
+    tAttr.setStorable(false);
+    tAttr.setKeyable(false);
+    tAttr.setWritable(false);
+    tAttr.setReadable(true);
+
+    addAttribute(aDistance);
+    addAttribute(aDirection);
+    addAttribute(aInputMatrix);
+    addAttribute(aOutputMatrix);
+
+    attributeAffects(aDistance, aOutputMatrix);
+    attributeAffects(aDirection, aOutputMatrix);
+    attributeAffects(aInputMatrix, aOutputMatrix);
 
     return MS::kSuccess;
 }
 
 MStatus AutoRollNode::compute(const MPlug& plug, MDataBlock& data)
 {
-    MStatus status;
     if (plug != m_outputRotation)
     {
         return MS::kUnknownParameter;
     }
 
+    MStatus status;
+    double deltaTime = data.inputValue(m_deltaTime).asDouble();
+    double distance = data.inputValue(m_distance).asDouble();
+    double wheelRadius = data.inputValue(m_wheelRadius).asDouble();
+
+    // calculate wheel rotation
+    double wheelCircumference = 2 * M_PI * wheelRadius;
+    double rotation = (distance / wheelCircumference) * 360.0;
+
+    // calculate roll based on velocity
+    double roll = 0.0;
+    MVector velocity = data.inputValue(m_velocity).asVector();
+    if (!velocity.isZero())
+    {
+        velocity.normalize();
+        MVector upVector(0.0, 1.0, 0.0);
+        roll = -MVector::angle(velocity, upVector) * 180.0 / M_PI;
+    }
+
+    // set output rotation
+    MFnMatrixAttribute matrixAttr;
     MMatrix inputMatrix = data.inputValue(m_inputMatrix).asMatrix();
-    MVector forwardVector = data.inputValue(m_forwardVector).asVector;
-    
-    MVector forwardProjection = forwardVector * inputMatrix;
-    forwardProjection.normalize();
-    
-    MVector upVector = MVector::up;
-    MVector upProjection = upVector * inputMatrix;
-    upProjection.normalize();
-
-    MVector rightVector = forwardProjection ^ upProjection;
-    rightVector.normalize();
-
-    MVector upRoll = upVector * (rightVector * upVector);
-    upRoll.normalize();
-
-    MQuaternion targetRotation = MQuaternion(upVector, upRoll);
-
-    MDataHandle outputRotationHandle = data.outputValue(m_outputRotation);
-    outputRotationHandle.set(targetRotation.asEulerRotation());
-    outputRotationHandle.setClean();
+    MQuaternion rotationQuaternion(MVector(0.0, 1.0, 0.0), rotation);
+    MQuaternion rollQuaternion(MVector(1.0, 0.0, 0.0), roll);
+    MMatrix rotationMatrix = rotationQuaternion.asMatrix();
+    MMatrix rollMatrix = rollQuaternion.asMatrix();
+    MMatrix outputMatrix = inputMatrix * rollMatrix * rotationMatrix;
+    MDataHandle outputHandle = data.outputValue(m_outputRotation);
+    outputHandle.setMMatrix(outputMatrix);
+    data.setClean(plug);
 
     return MS::kSuccess;
 }
 
-
-void* AutoRollNode::creator()
-{
-    return new AutoRollNode();
-}
