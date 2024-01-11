@@ -1,32 +1,50 @@
 cmake_minimum_required(VERSION 3.0)
+project(WrinkleDeformer)
 
-# Project name
-project(wrinkleDeformer)
-
-# Set C++11 standard
+# Set the C++ standard you wish to use (you should match this with what Maya uses)
 set(CMAKE_CXX_STANDARD 11)
 
-# Set Maya path
-set(MAYA_PATH "/usr/autodesk/maya2022")
+# Define the path to the Maya installation. Replace this with your Maya installation path
+set(MAYA_DIR "/path/to/your/maya/installation")
 
-# Add include directories
-include_directories(${MAYA_PATH}/include)
+# Specify Maya version
+set(MAYA_VERSION 2020)
 
-# Add library directories
-link_directories(${MAYA_PATH}/lib)
+# Include directories for Maya headers
+include_directories(${MAYA_DIR}/include)
 
-# Add source files
-set(SOURCES WrinkleDeformer.cpp)
+# Specify directories for Maya libraries
+link_directories(${MAYA_DIR}/lib)
 
-# Create shared library
-add_library(${PROJECT_NAME} SHARED ${SOURCES})
+# Define source files
+set(SOURCE_FILES 
+    WrinkleDeformer.cpp
+    # Add any additional source files here
+)
 
-# Link Maya libraries
-target_link_libraries(${PROJECT_NAME} OpenMaya Foundation)
+# Define the target library
+add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES})
 
-# Set output directory
-set_target_properties(${PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+# Specify libraries to link against
+target_link_libraries(${PROJECT_NAME} 
+    OpenMaya
+    OpenMayaAnim
+    OpenMayaFX
+    OpenMayaRender
+    OpenMayaUI
+    Foundation
+    # Add any additional Maya libraries or other dependencies
+)
 
-# Set output name
-set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
+# Define the output directory for the plugin
+set_target_properties(${PROJECT_NAME} PROPERTIES 
+                      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/output")
 
+# Set specific compile definitions and flags, if necessary
+if(WIN32)
+    set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".mll")
+    set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "/export:initializePlugin /export:uninitializePlugin")
+elseif(UNIX)
+    set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
+    set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".so")
+endif()
