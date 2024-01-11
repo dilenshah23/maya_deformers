@@ -1,60 +1,133 @@
-import maya.OpenMaya as om
-import maya.OpenMayaMPx as ommpx
+import maya.OpenMayaMPx as OpenMayaMPx
+import maya.OpenMaya as OpenMaya
 
-class WrinkleDeformer(ommpx.MPxDeformerNode):
-    kNodeName = "wrinkleDeformer"
-    kNodeClassify = "deformer"
-    kNodeID = om.MTypeId(0x100fff)
+class WrinkleDeformer(OpenMayaMPx.MPxDeformerNode):
+    kPluginNodeId = OpenMaya.MTypeId(0x0011E182)  # Unique ID for the plugin
+    kPluginNodeName = "WrinkleDeformer"
 
-    aAmount = om.MObject()
-    aDirection = om.MObject()
+    # Attribute handles
+    intensityAttr = OpenMaya.MObject()
+    paintMapAttr = OpenMaya.MObject()
 
     def __init__(self):
-        ommpx.MPxDeformerNode.__init__(self)
+        OpenMayaMPx.MPxDeformerNode.__init__(self)
 
-    def deform(self, data, itGeo, localToWorldMatrix, geomIndex):
-        input = ommpx.cvar.MPxDeformerNode_input
-        env = ommpx.cvar.MPxDeformerNode_envelope
-        amount = data.inputValue(WrinkleDeformer.aAmount).asFloat()
-        direction = data.inputValue(WrinkleDeformer.aDirection).asFloat()
+    def deform(self, dataBlock, geomIter, matrix, multiIndex):
+        # Get intensity attribute
+        intensityHandle = dataBlock.inputValue(self.intensityAttr)
+        intensity = intensityHandle.asFloat()
 
-        while not itGeo.isDone():
-            index = itGeo.index()
-            inputGeom = ommpx.MFnMesh(input)
-            point = inputGeom.getPoint(index, om.MSpace.kObject)
-            
-            wrinkle = amount*(1-direction*point.y)
-            point.x += wrinkle
-            inputGeom.setPoint(index, point, om.MSpace.kObject)
+        # Get paint map attribute
+        paintMapHandle = dataBlock.inputArrayValue(self.paintMapAttr)
 
-            itGeo.next()
+        while geomIter.isDone() is False:
+            point = geomIter.position()
+            weight = self.weightValue(dataBlock, multiIndex, geomIter.index())
+
+            # Analyze local geometry to detect compression
+            compressionFactor = self.calculateCompression(geomIter)
+
+            # Modify 'point' based on intensity, paintMap, and compression
+            if compressionFactor > 0:
+                # Only apply wrinkles in compressed areas
+                wrinkleEffect = compressionFactor * intensity * weight
+                # Wrinkle logic - This should be replaced with actual wrinkle creation logic
+                point.y += wrinkleEffect
+
+            geomIter.setPosition(point)
+            geomIter.next()
+
+    def calculateCompression(self, geomIter):
+        """
+        Calculate the compression factor for the current vertex.
+        This method analyzes the local geometry to determine compression.
+        """
+        # Access the original mesh (rest state)
+        thisNode = self.thisMObject()
+        plug = OpenMaya.MPlug(thisNode, self.input)
+        plug = plug.elementByLogicalIndex(geomIter.index())
+        dataHandle = plug.asMDataHandle()
+        inputGeom = dataHandle.asMesh()
+
+        # Original positions of vertices
+        origPoints = OpenMaya.MPointArray()
+        inputGeom.getPoints(origPoints)
+
+        # Current position
+        currentPoint = geomIter.position()
+
+        # Calculate average change in distance to adjacent vertices
+        # Initialize variables for distance calculation
+        totalDistChange = 0.0
+        numAdjacentVerts = 0
+
+        # Get the list of connected vertices
+        connectedVertices = OpenMaya.MIntArray()
+        geomIter.getConnectedVertices(connectedVertices)
+
+        for i in range(connectedVertices.length()):
+            # Original and current position of the connected vertex
+            origPosConnected = origPoints[connectedVertices[i]]
+            currentPosConnected = geomIter.setPosition(connectedVertices[i])
+
+            # Calculate distance change
+            origDist = (origPosConnected - origPoints[geomIter.index()]).length()
+            currentDist = (currentPosConnected - currentPoint).length()
+
+            # Accumulate the change in distance
+            distChange = origDist - currentDist
+            if distChange > 0:  # Consider only compression, not expansion
+                totalDistChange += distChange
+                numAdjacentVerts += 1
+
+            # Reset the iterator's position
+            geomIter.setPosition(currentPoint)
+
+        # Calculate average compression factor
+        if numAdjacentVerts > 0:
+            avgDistChange = totalDistChange / numAdjacentVerts
+            compressionFactor = min(avgDistChange, 1.0)  # Normalize to a maximum of 1
+        else:
+            compressionFactor = 0.0
+
+        return compressionFactor
     
-    def accessoryNodeSetup(self, dagMod):
-        pass
+    @staticmethod
+    def creator():
+        return OpenMayaMPx.asMPxPtr(WrinkleDeformer())
 
-    def accessoryNodeConnections(self):
-        pass
+    @staticmethod
+    def initialize():
+        nAttr = OpenMaya.MFnNumericAttribute()
 
-def nodeCreator():
-    return ommpx.asMPxPtr(WrinkleDeformer())
+        # Create intensity attribute
+        WrinkleDeformer.intensityAttr = nAttr.create("intensity", "int", OpenMaya.MFnNumericData.kFloat, 0.0)
+        nAttr.setKeyable(True)
+        nAttr.setStorable(True)
+        nAttr.setWritable(True)
+        nAttr.setReadable(True)
+        nAttr.setMin(0.0)
+        nAttr.setMax(1.0)
+        WrinkleDeformer.addAttribute(WrinkleDeformer.intensityAttr)
 
-def nodeInitializer():
-    nAttr = om.MFnNumericAttribute()
+        # Create paint map attribute
+        WrinkleDeformer.paintMapAttr = nAttr.create("paintMap", "pm", OpenMaya.MFnNumericData.kFloat, 0.0)
+        nAttr.setArray(True)
+        nAttr.setUsesArrayDataBuilder(True)
+        WrinkleDeformer.addAttribute(WrinkleDeformer.paintMapAttr)
 
-    WrinkleDeformer.aAmount = nAttr.create("amount", "amt", om.MFnNumericData.kFloat, 1.0)
-    nAttr.setKeyable(True)
-    WrinkleDeformer.addAttribute(WrinkleDeformer.aAmount)
-    WrinkleDeformer.attributeAffects(WrinkleDeformer.aAmount, ommpx.cvar.MPxDeformerNode_outputGeom)
+        # Set affects
+        outputGeom = OpenMayaMPx.cvar.MPxGeometryFilter_outputGeom
+        WrinkleDeformer.attributeAffects(WrinkleDeformer.intensityAttr, outputGeom)
+        WrinkleDeformer.attributeAffects(WrinkleDeformer.paintMapAttr, outputGeom)
 
-    WrinkleDeformer.aDirection = nAttr.create("direction", "dir", om.MFnNumericData.kFloat, 1.0)
-    nAttr.setKeyable(True)
-    WrinkleDeformer.addAttribute(WrinkleDeformer.aDirection)
-    WrinkleDeformer.attributeAffects(WrinkleDeformer.aDirection, ommpx.cvar.MPxDeformerNode_outputGeom)
+# Initialize the plugin when Maya loads it
+def initializePlugin(obj):
+    plugin = OpenMayaMPx.MFnPlugin(obj, "Your Name", "1.0", "Any")
+    plugin.registerNode(WrinkleDeformer.kPluginNodeName, WrinkleDeformer.kPluginNodeId, 
+                        WrinkleDeformer.creator, WrinkleDeformer.initialize, OpenMayaMPx.MPxNode.kDeformerNode)
 
-def initializePlugin(mobject):
-    mplugin = om.MFnPlugin(mobject)
-    try:
-        mplugin.registerNode(WrinkleDeformer.kNodeName, WrinkleDeformer.kNodeID, nodeCreator, nodeInitializer, ommpx.MPxNode.kDeformerNode)
-    except:
-        sys.stderr.write("Failed to register node: %s" % WrinkleDeformer.kNodeName)
-        raise
+# Uninitialize the plugin when Maya unloads it
+def uninitializePlugin(obj):
+    plugin = OpenMayaMPx.MFnPlugin(obj)
+    plugin.deregisterNode(WrinkleDeformer.kPluginNodeId)
